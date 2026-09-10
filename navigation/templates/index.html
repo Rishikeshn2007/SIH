@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>UGV Navigation Dashboard</title>
+  <meta name="description" content="Real-time navigation dashboard for the unmanned ground vehicle." />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+<div class="app">
+
+  <!-- ═══════════════════════════════════════════════════ HEADER ══════ -->
+  <header>
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#58a6ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+    </svg>
+    <h1>UGV Navigation Server</h1>
+    <span class="pill">BFS · 4-connected</span>
+    <span id="navStatus" class="badge badge-idle" style="margin-left:auto">IDLE</span>
+  </header>
+
+  <!-- ═══════════════════════════════════════════════════ MAIN ════════ -->
+  <div class="main">
+
+    <!-- ─────────────────────────────── SIDEBAR ────────────────────── -->
+    <aside class="sidebar">
+
+      <!-- Control panel -->
+      <div class="section">
+        <h2>Route Setup</h2>
+
+        <p style="font-size:11px;color:var(--text-sec);margin-bottom:10px;">
+          Coordinates: <code style="font-family:var(--font-mono)">(row, col)</code>,
+          0-based. row&nbsp;0&nbsp;=&nbsp;top, col&nbsp;0&nbsp;=&nbsp;left.
+        </p>
+
+        <div class="coord-row">
+          <div class="field">
+            <label for="srcRow">Source row (Y)</label>
+            <input id="srcRow" type="number" min="0" value="0" />
+          </div>
+          <div class="field">
+            <label for="srcCol">Source col (X)</label>
+            <input id="srcCol" type="number" min="0" value="0" />
+          </div>
+        </div>
+
+        <div class="coord-row">
+          <div class="field">
+            <label for="dstRow">Dest row (Y)</label>
+            <input id="dstRow" type="number" min="0" value="19" />
+          </div>
+          <div class="field">
+            <label for="dstCol">Dest col (X)</label>
+            <input id="dstCol" type="number" min="0" value="19" />
+          </div>
+        </div>
+
+        <button id="btnStart" class="btn btn-primary">▶ Start Navigation</button>
+        <button id="btnStop"  class="btn btn-danger"  disabled>■ Stop</button>
+      </div>
+
+      <!-- Live stats -->
+      <div class="section">
+        <h2>Vehicle State</h2>
+        <div class="stat-grid">
+          <div class="stat">
+            <div class="label">Position (row, col)</div>
+            <div class="value highlight" id="curPos">—</div>
+          </div>
+          <div class="stat">
+            <div class="label">Heading</div>
+            <div class="value" id="curHeading">—</div>
+          </div>
+          <div class="stat">
+            <div class="label">Command</div>
+            <div class="value" id="curCommand">—</div>
+          </div>
+          <div class="stat">
+            <div class="label">Speed</div>
+            <div class="value" id="curSpeed">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Progress -->
+      <div class="section">
+        <h2>Route Progress</h2>
+        <div class="stat-grid">
+          <div class="stat" style="grid-column:1/-1">
+            <div class="label">Waypoint</div>
+            <div class="value highlight" id="routeProgress">—</div>
+          </div>
+          <div class="stat" style="grid-column:1/-1">
+            <div class="label">Total waypoints</div>
+            <div class="value" id="routeLen">—</div>
+          </div>
+        </div>
+        <div class="progress-wrap">
+          <div class="progress-bar" id="progressBar"></div>
+        </div>
+      </div>
+
+      <!-- Legend -->
+      <div class="section">
+        <h2>Legend</h2>
+        <div style="display:flex;flex-direction:column;gap:6px;font-size:12px;">
+          <span><span style="display:inline-block;width:12px;height:12px;background:#f85149;border-radius:2px;margin-right:7px;vertical-align:middle;"></span>Obstacle</span>
+          <span><span style="display:inline-block;width:12px;height:12px;background:#1c2330;border:1px solid #30363d;border-radius:2px;margin-right:7px;vertical-align:middle;"></span>Free cell</span>
+          <span><span style="display:inline-block;width:12px;height:3px;background:#58a6ff;margin-right:7px;vertical-align:middle;"></span>Planned route</span>
+          <span><span style="display:inline-block;width:12px;height:12px;background:#3fb950;border-radius:50%;margin-right:7px;vertical-align:middle;"></span>Start (S)</span>
+          <span><span style="display:inline-block;width:12px;height:12px;background:#f85149;border-radius:50%;margin-right:7px;vertical-align:middle;"></span>Goal (G)</span>
+          <span><span style="display:inline-block;width:12px;height:12px;background:#e3b341;border-radius:50%;margin-right:7px;vertical-align:middle;"></span>Vehicle</span>
+        </div>
+      </div>
+
+    </aside>
+
+    <!-- ─────────────────────────────── MAP ────────────────────────── -->
+    <main class="map-area">
+      <canvas id="mapCanvas" title="Grid map — obstacles, route, and vehicle"></canvas>
+    </main>
+
+  </div><!-- .main -->
+
+  <!-- ═══════════════════════════════════════════════════ FOOTER ══════ -->
+  <footer>
+    <div class="log-col">
+      <div class="log-title rx">↓ ESP32 → Server</div>
+      <div id="logRx"></div>
+    </div>
+    <div class="log-col">
+      <div class="log-title tx">↑ Server → ESP32</div>
+      <div id="logTx"></div>
+    </div>
+  </footer>
+
+</div><!-- .app -->
+<script src="/static/app.js"></script>
+</body>
+</html>

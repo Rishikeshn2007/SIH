@@ -1,0 +1,152 @@
+====================================================================
+ESP32 SETUP GUIDE & COMMUNICATION PROTOCOL (UGV NAVIGATION)
+====================================================================
+
+1. NETWORK & SERVER ENDPOINT
+----------------------------
+• Server Port : 5000
+• Target IP   : Your PC's local WiFi IP (e.g., 192.168.1.50)
+                Find it in Windows terminal: ipconfig  -> IPv4 Address
+• Protocol    : HTTP POST
+• Endpoint    : http://<PC_IP>:5000/car/state
+• Header      : Content-Type: application/json
+
+
+2. WHAT ESP32 MUST SEND (TELEMETRY PACKET)
+------------------------------------------
+Send an HTTP POST request every 200 - 500 ms (or after each move):
+
+JSON Body:
+{
+  "x": 0,
+  "y": 0,
+  "heading": 0,
+  "running": true
+}
+
+Field descriptions:
+• "x"       : Integer. Current grid column (0-based, 0 = leftmost).
+• "y"       : Integer. Current grid row (0-based, 0 = topmost).
+• "heading" : Integer. Current orientation in degrees:
+                0   = North (decreasing row / up)
+                90  = East  (increasing col / right)
+                180 = South (increasing row / down)
+                270 = West  (decreasing col / left)
+• "running" : Boolean. Must be true for active navigation.
+
+
+3. WHAT ESP32 RECEIVES (COMMAND PACKET)
+---------------------------------------
+The server responds with HTTP 200 OK containing:
+
+{
+  "command": "move_forward",
+  "speed": 150,
+  "turn_angle": null,
+  "next_x": 0,
+  "next_y": 1,
+  "timestamp": 1725963200.5
+}
+
+How to handle "command":
+• "move_forward" : Drive straight 1 grid cell at "speed" (PWM: 150).
+• "turn_left"    : Turn counter-clockwise by "turn_angle" (90 deg) at "speed" (80).
+• "turn_right"   : Turn clockwise by "turn_angle" (90 or 180 deg) at "speed" (80).
+• "stop"         : Stop all motors immediately ("speed": 0). Destination
+                   reached, error occurred, or operator halted.
+
+
+4. CLOSED-LOOP RULE (IMPORTANT!)
+--------------------------------
+Do NOT update (x, y) until the vehicle has physically moved.
+The server only advances waypoints after your ESP32 reports that it has
+actually reached the new coordinate.
+
+
+5. MINIMAL ARDUINO / ESP32 CODE SKELETON
+----------------------------------------
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <ArduinoJson.h> // ArduinoJson v6 or v7
+
+const char* ssid     = "YOUR_WIFI_SSID";
+const char* password = "YOUR_WIFI_PASSWORD";
+const char* serverUrl = "http://192.168.1.50:5000/car/state";
+
+// Vehicle state
+int current_x = 0;
+int current_y = 0;
+int current_heading = 0; // 0, 90, 180, or 270
+bool is_running = true;
+
+void setup() {
+  Serial.begin(115200);
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi Connected!");
+}
+
+void loop() {
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+    http.begin(serverUrl);
+    http.addHeader("Content-Type", "application/json");
+
+    // 1. Build JSON payload
+    StaticJsonDocument<128> txDoc;
+    txDoc["x"] = current_x;
+    txDoc["y"] = current_y;
+    txDoc["heading"] = current_heading;
+    txDoc["running"] = is_running;
+
+    String requestBody;
+    serializeJson(txDoc, requestBody);
+
+    // 2. Send POST
+    int httpCode = http.POST(requestBody);
+
+    // 3. Parse Server Response
+    if (httpCode == 200) {
+      String response = http.getString();
+      StaticJsonDocument<256> rxDoc;
+      deserializeJson(rxDoc, response);
+
+      const char* cmd = rxDoc["command"];
+      int speed = rxDoc["speed"];
+      int angle = rxDoc["turn_angle"] | 0;
+
+      // 4. Execute command
+      if (strcmp(cmd, "move_forward") == 0) {
+        driveForward(speed);
+        // Update odometry/position after motion completes
+        current_x = rxDoc["next_x"];
+        current_y = rxDoc["next_y"];
+      } else if (strcmp(cmd, "turn_left") == 0) {
+        turnLeft(speed, angle);
+        current_heading = (current_heading - angle + 360) % 360;
+      } else if (strcmp(cmd, "turn_right") == 0) {
+        turnRight(speed, angle);
+        current_heading = (current_heading + angle) % 360;
+      } else if (strcmp(cmd, "stop") == 0) {
+        stopMotors();
+      }
+    }
+    http.end();
+  }
+  delay(300); // Heartbeat cycle
+}
+
+
+6. SETUP CHECKLIST
+------------------
+1. Connect PC and ESP32 to the same Wi-Fi network.
+2. Find PC IPv4 address (`ipconfig` in cmd/powershell).
+3. Put PC IPv4 address into `serverUrl` on ESP32 code.
+4. Run server on PC:
+     python navigation/server.py
+5. Open browser at http://localhost:5000 and click "Start Navigation".
+6. Power on ESP32. Check the "Live Packet Log" on the dashboard to see
+   inbound heartbeats and outbound commands in real-time.
