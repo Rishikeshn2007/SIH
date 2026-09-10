@@ -1,7 +1,9 @@
+#SLAM.py marked.png marked.png marked.png marked.png --layout 2 2
+
 import cv2
 import numpy as np
 import os
-import argparse
+import matplotlib.pyplot as plt
 
 
 class Slam:
@@ -302,7 +304,68 @@ class Slam:
         print(f"Matrix saved: {matrix_path}")
 
     # ========================================================
-    # 7. PRINT COORDINATES
+    # 7. DISPLAY OBSTACLE MATRIX
+    # ========================================================
+
+    def display_obstacle_matrix(self, show=False):
+
+        if self.obstacle_matrix is None:
+            raise RuntimeError(
+                "detect_obstacles() must be called before "
+                "display_obstacle_matrix()"
+            )
+
+        figure_width = max(8, self.cols * 0.35)
+        figure_height = max(6, self.rows * 0.35)
+        figure, axis = plt.subplots(figsize=(figure_width, figure_height))
+
+        axis.imshow(
+            self.obstacle_matrix,
+            cmap="RdYlGn_r",
+            vmin=0,
+            vmax=1,
+            interpolation="none"
+        )
+        axis.set_title("Obstacle Map")
+        axis.set_xlabel("Column")
+        axis.set_ylabel("Row")
+        axis.set_xticks(np.arange(self.cols))
+        axis.set_yticks(np.arange(self.rows))
+        axis.set_xticklabels(np.arange(1, self.cols + 1))
+        axis.set_yticklabels(np.arange(1, self.rows + 1))
+        axis.set_xticks(np.arange(-0.5, self.cols, 1), minor=True)
+        axis.set_yticks(np.arange(-0.5, self.rows, 1), minor=True)
+        axis.grid(which="minor", color="black", linewidth=0.5)
+        axis.tick_params(which="minor", bottom=False, left=False)
+
+        for row in range(self.rows):
+            for col in range(self.cols):
+                axis.text(
+                    col,
+                    row,
+                    str(int(self.obstacle_matrix[row, col])),
+                    ha="center",
+                    va="center",
+                    color="white" if self.obstacle_matrix[row, col] else "black",
+                    fontsize=7
+                )
+
+        figure.tight_layout()
+        output_path = os.path.join(
+            self.output_dir,
+            "obstacle_matrix.png"
+        )
+        figure.savefig(output_path, dpi=200, bbox_inches="tight")
+        print(f"Obstacle map saved: {output_path}")
+
+        if show:
+            plt.show()
+
+        plt.close(figure)
+        return figure, axis
+
+    # ========================================================
+    # 8. PRINT COORDINATES
     # ========================================================
 
     def print_coordinates(self):
@@ -319,7 +382,7 @@ class Slam:
             )
 
     # ========================================================
-    # 8. PRINT MATRIX
+    # 9. PRINT MATRIX
     # ========================================================
 
     def print_matrix(self):
@@ -329,7 +392,7 @@ class Slam:
         print(self.obstacle_matrix)
 
     # ========================================================
-    # 9. PROCESS EVERYTHING
+    # 10. PROCESS EVERYTHING
     # ========================================================
 
     def process(self):
@@ -346,6 +409,8 @@ class Slam:
 
         self.save_matrix()
 
+        self.display_obstacle_matrix()
+
         self.print_coordinates()
 
         self.print_matrix()
@@ -359,58 +424,43 @@ class Slam:
 
 if __name__ == "__main__":
 
-    parser = argparse.ArgumentParser(
-        description="Convert a map image into a grid and obstacle matrix."
-    )
-    parser.add_argument(
-        "image_path",
-        nargs="+",
-        help="Path to one image, or all images in row-major order"
-    )
-    parser.add_argument(
-        "--layout",
-        nargs=2,
-        type=int,
-        metavar=("IMAGE_ROWS", "IMAGE_COLS"),
-        help="Tile layout for multiple images, for example: --layout 2 2"
-    )
-    parser.add_argument(
-        "--output-dir",
-        default="outputs/grid",
-        help="Directory for generated files (default: outputs/grid)"
-    )
-    args = parser.parse_args()
+    # ===================== USER SETTINGS =====================
+    # Arrange image paths row by row. This example creates a 2 x 2 map:
+    #
+    #   marked.png | marked.png
+    #   marked.png | marked.png
+    #
+    # Replace these names with your image filenames.
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    image_names = [
+        ["marked.png", "marked.png"],
+        ["marked.png", "marked.png"]
+    ]
+    image_path = [
+        [os.path.join(base_dir, image_name) for image_name in row]
+        for row in image_names
+    ]
 
-    if args.layout is None:
-        if len(args.image_path) != 1:
-            parser.error("multiple images require --layout IMAGE_ROWS IMAGE_COLS")
-        image_path = args.image_path[0]
-    else:
-        tile_rows, tile_cols = args.layout
-        if tile_rows <= 0 or tile_cols <= 0:
-            parser.error("layout dimensions must be positive")
-        expected_images = tile_rows * tile_cols
-        if len(args.image_path) != expected_images:
-            parser.error(
-                f"--layout {tile_rows} {tile_cols} requires "
-                f"{expected_images} image paths"
-            )
-        image_path = [
-            args.image_path[row * tile_cols:(row + 1) * tile_cols]
-            for row in range(tile_rows)
-        ]
+    output_dir = os.path.abspath(
+        os.path.join(base_dir, "..", "outputs", "grid")
+    )
+    show_matrix = True
+
+    # Grid cells per image tile.
+    rows_per_image = 20
+    cols_per_image = 20
 
     mapper = Slam(
 
         image_path=image_path,
 
-        output_dir=args.output_dir,
+        output_dir=output_dir,
 
         arena_width=2.0,
         arena_height=2.0,
 
-        rows=20,
-        cols=20,
+        rows=rows_per_image,
+        cols=cols_per_image,
 
         image_size=(2000, 2000),
 
@@ -420,3 +470,6 @@ if __name__ == "__main__":
     )
 
     grid_image, obstacle_matrix = mapper.process()
+
+    if show_matrix:
+        mapper.display_obstacle_matrix(show=True)
